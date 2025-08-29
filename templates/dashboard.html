@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <title>CV Asistanı Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { padding: 20px; }
+    .tab-content { margin-top: 20px; }
+    #chat-box { border:1px solid #ccc; padding:10px; height:300px; overflow-y:auto; }
+
+    /* Analiz kısmı */
+    #analysis-section {
+      display:none;
+      margin-top:30px;
+    }
+    #analysis-section img {
+      max-width:100%;
+      border:1px solid #ccc;
+      margin-bottom: 15px;
+    }
+    #cv-findings .card {
+      margin-bottom:10px;
+    }
+
+    /* Yükleme önizleme kutusu */
+    #previewContainer {
+      display:none;
+      margin-top:15px;
+      border:1px solid #ccc;
+      padding:10px;
+      border-radius:8px;
+      max-width:500px;
+    }
+    #previewContainer embed {
+      width:100%;
+      height:500px;
+      border:1px solid #ddd;
+      border-radius:4px;
+    }
+  </style>
+</head>
+<body>
+  <h1 class="mb-4">📄 CV Asistanı Dashboard</h1>
+
+  <!-- Sekmeler -->
+  <ul class="nav nav-tabs" id="myTab" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active" id="upload-tab" data-bs-toggle="tab" data-bs-target="#upload" type="button" role="tab">CV Yükle</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="list-tab" data-bs-toggle="tab" data-bs-target="#list" type="button" role="tab">CV Listesi</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="chat-tab" data-bs-toggle="tab" data-bs-target="#chat" type="button" role="tab">Chatbot</button>
+    </li>
+  </ul>
+
+  <div class="tab-content" id="myTabContent">
+    <!-- CV Yükle -->
+    <div class="tab-pane fade show active" id="upload" role="tabpanel">
+      <h3>📤 CV Yükle</h3>
+      <form method="post" enctype="multipart/form-data" action="/upload/">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button class="btn btn-primary">Yükle</button>
+      </form>
+
+      <!-- Önizleme Kutusu -->
+      <div id="previewContainer">
+        <h6 class="mb-2">📄 Seçtiğin Dosyanın Önizlemesi:</h6>
+        <embed id="previewEmbed" src="" type="application/pdf">
+      </div>
+    </div>
+
+    <!-- CV Listesi -->
+    <div class="tab-pane fade" id="list" role="tabpanel">
+      <h3>📑 Yüklenmiş CV'ler</h3>
+      <ul class="list-group">
+        {% for cv in cvs %}
+        <li class="list-group-item d-flex justify-content-between align-items-center">
+          <span>{{ cv.pdf.name }}</span>
+          <div>
+            <button class="btn btn-sm btn-success me-2" onclick="analyzeCv({{ cv.id }})">Analiz Et</button>
+            <button class="btn btn-sm btn-danger" onclick="deleteCv({{ cv.id }}, this)">Sil</button>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+
+      <!-- Analiz Sonuçlarının Gözükeceği Alan -->
+      <div id="analysis-section" class="row">
+        <!-- Sol taraf: CV önizleme -->
+        <div class="col-md-6">
+          <h4>📄 CV Önizleme</h4>
+          <img id="cv-image" src="" alt="Analizli CV">
+        </div>
+        <!-- Sağ taraf: Analiz maddeleri -->
+        <div class="col-md-6">
+          <h4>🔎 Detaylı Analiz</h4>
+          <div id="cv-findings"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chatbot -->
+    <div class="tab-pane fade" id="chat" role="tabpanel">
+      <h3>🤖 Chatbot</h3>
+      <div id="chat-box"></div>
+      <form id="chatForm" method="post">
+        {% csrf_token %}
+        <div class="input-group mt-2">
+          <input type="text" name="message" id="messageInput" class="form-control" placeholder="Mesajınızı yazın...">
+          <button class="btn btn-primary" type="submit">Gönder</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    // === Dosya seçildiğinde PDF önizlemesini göster ===
+    document.addEventListener('DOMContentLoaded', () => {
+      const fileInput = document.querySelector('input[type="file"]');
+      const previewContainer = document.getElementById('previewContainer');
+      const previewEmbed = document.getElementById('previewEmbed');
+
+      if (fileInput) {
+        fileInput.addEventListener('change', function() {
+          const file = this.files[0];
+          if (!file) {
+            previewContainer.style.display = 'none';
+            return;
+          }
+
+          if (file.type === 'application/pdf') {
+            const fileURL = URL.createObjectURL(file);
+            previewEmbed.src = fileURL;
+            previewContainer.style.display = 'block';
+          } else {
+            previewEmbed.removeAttribute('src');
+            previewContainer.style.display = 'none';
+          }
+        });
+      }
+    });
+
+    // === Chatbot ===
+    const form = document.getElementById('chatForm');
+    const chatBox = document.getElementById('chat-box');
+    const messageInput = document.getElementById('messageInput');
+    if (form) {
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const message = messageInput.value.trim();
+        if (!message) return;
+        chatBox.innerHTML += `<div><strong>Sen:</strong> ${message}</div>`;
+        messageInput.value = '';
+        const formData = new FormData();
+        formData.append('message', message);
+        const response = await fetch('/help_me/', { method: 'POST', body: formData });
+        const data = await response.json();
+        if (data.reply) {
+          chatBox.innerHTML += `<div><strong>AI:</strong> ${data.reply}</div>`;
+        } else if (data.error) {
+          chatBox.innerHTML += `<div><strong>Hata:</strong> ${data.error}</div>`;
+        }
+        chatBox.scrollTop = chatBox.scrollHeight;
+      });
+    }
+
+    // === Analiz Et ===
+    async function analyzeCv(cvId) {
+      const findingsEl = document.getElementById('cv-findings');
+      findingsEl.innerHTML = `<div class="text-muted">⏳ Analiz ediliyor...</div>`;
+      document.getElementById('analysis-section').style.display = 'flex';
+
+      // Soldaki görseli yükle
+      const imgResp = await fetch(`/analyze_image/${cvId}/`);
+      const imgBlob = await imgResp.blob();
+      document.getElementById('cv-image').src = URL.createObjectURL(imgBlob);
+
+      // Sağdaki maddeleri yükle
+      const txtResp = await fetch(`/analyze/${cvId}/`);
+      const data = await txtResp.json();
+      findingsEl.innerHTML = '';
+      if (data.findings) {
+        data.findings.forEach(item => {
+          const card = document.createElement('div');
+          card.className = 'card';
+          card.innerHTML = `<div class="card-body"><p class="card-text">${item}</p></div>`;
+          findingsEl.appendChild(card);
+        });
+      } else if (data.error) {
+        const errCard = document.createElement('div');
+        errCard.className = 'card border-danger';
+        errCard.innerHTML = `<div class="card-body text-danger">Analiz sırasında hata: ${data.error}</div>`;
+        findingsEl.appendChild(errCard);
+      }
+    }
+
+    // === Silme ===
+    async function deleteCv(cvId, buttonElement) {
+      if (!confirm("Bu CV'yi silmek istediğinden emin misin?")) return;
+      const response = await fetch(`/delete/${cvId}/`, { method: 'POST' });
+      const data = await response.json();
+      if (data.status === "success") {
+        const listItem = buttonElement.closest('li');
+        listItem.remove();
+      } else {
+        alert("Silme başarısız: " + (data.error || "Bilinmeyen hata"));
+      }
+    }
+  </script>
+</body>
+</html>
